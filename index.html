@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yansys CRM - Suivi Client</title>
+
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Leaflet CSS & JS for interactive maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+        }
+        /* Custom colors inspired by Yansys logo */
+        .yansys-blue-bg { background-color: #1a3a6b; }
+        .yansys-green-bg { background-color: #92c83e; }
+        .text-yansys-blue { color: #1a3a6b; }
+        .text-yansys-green { color: #92c83e; }
+        .border-yansys-blue { border-color: #1a3a6b; }
+        .border-yansys-green { border-color: #92c83e; }
+        .ring-yansys-blue:focus { ring-color: #1a3a6b; }
+        .ring-yansys-green:focus { ring-color: #92c83e; }
+        
+        #map {
+            height: 100vh;
+            width: 100%;
+            z-index: 0;
+        }
+
+        .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #e2e8f0;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        /* Modal backdrop */
+        .modal-backdrop {
+            background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+        }
+        
+        /* General button style */
+        .btn {
+            @apply font-bold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5;
+        }
+        .btn-blue {
+            @apply bg-gradient-to-br from-blue-800 to-blue-900 text-white;
+        }
+        .btn-green {
+            @apply bg-gradient-to-br from-green-500 to-green-600 text-white;
+        }
+        .btn-red {
+            @apply bg-gradient-to-br from-red-600 to-red-700 text-white;
+        }
+        
+        /* Toast Notification Style */
+        #toast-notification.show {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        #toast-notification {
+             opacity: 0;
+             transform: translateX(100%);
+             transition: all 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body class="overflow-hidden">
+
+    <div id="app" class="flex h-screen bg-gray-100">
+
+        <!-- Sidebar -->
+        <aside class="w-96 bg-white shadow-2xl flex flex-col z-10 shrink-0 h-full">
+            <!-- Header -->
+            <div class="flex items-center justify-center p-4 border-b border-gray-200">
+                <img src="yansys-logo.jpg" alt="Logo Yansys" class="h-10">
+            </div>
+
+            <div class="flex-grow overflow-y-auto">
+                <!-- Filters -->
+                <div class="p-5">
+                    <h3 class="text-xl font-bold text-yansys-blue mb-4">Filtres</h3>
+                    <div class="space-y-3">
+                        <label class="font-semibold text-gray-700">Statut de l'hôpital</label>
+                        <div class="flex flex-col space-y-2 mt-2">
+                             <label class="flex items-center">
+                                <input type="checkbox" id="filter-all" class="h-5 w-5 rounded border-gray-300 text-yansys-blue focus:ring-yansys-blue" checked>
+                                <span class="ml-3 text-gray-700">Tous</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="filter-client" class="h-5 w-5 rounded border-gray-300 text-green-500 focus:ring-green-500" checked>
+                                <span class="ml-3 text-gray-700">Clients</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="filter-prospect" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                <span class="ml-3 text-gray-700">Prospects</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="filter-none" class="h-5 w-5 rounded border-gray-300 text-gray-600 focus:ring-gray-500" checked>
+                                <span class="ml-3 text-gray-700">Non classé</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mt-6">
+                        <label for="product-filter" class="font-semibold text-gray-700">Filtrer par produit</label>
+                        <select id="product-filter" class="mt-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-yansys-blue focus:ring focus:ring-yansys-blue focus:ring-opacity-50">
+                            <option value="all">Tous les produits</option>
+                            <!-- Product options will be populated by JS -->
+                        </select>
+                    </div>
+                </div>
+
+                 <!-- Legend -->
+                <div class="p-5 border-t border-gray-200">
+                    <h3 class="text-xl font-bold text-yansys-blue mb-4">Légende</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center">
+                             <i class="fa-solid fa-hospital fa-lg mr-3" style="color: #92c83e;"></i>
+                            <span class="text-gray-700">Client</span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fa-solid fa-hospital fa-lg mr-3" style="color: #1a3a6b;"></i>
+                            <span class="text-gray-700">Prospect</span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fa-solid fa-hospital fa-lg mr-3" style="color: #6b7280;"></i>
+                            <span class="text-gray-700">Non classé</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Import/Export & Product Management Buttons -->
+            <div class="p-4 border-t border-gray-200 space-y-3">
+                <button id="export-data-btn" class="w-full btn btn-blue flex items-center justify-center">
+                    <i class="fa-solid fa-download mr-2"></i> Exporter les données
+                </button>
+                <label for="import-file-input" class="w-full btn btn-blue flex items-center justify-center cursor-pointer">
+                    <i class="fa-solid fa-upload mr-2"></i> Importer les données
+                    <input type="file" id="import-file-input" accept=".json" class="hidden">
+                </label>
+                <button id="manage-products-btn" class="w-full btn btn-blue flex items-center justify-center">
+                    <i class="fa-solid fa-box-archive mr-2"></i> Bibliothèque de Produits
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content (Map) -->
+        <main class="flex-1 relative">
+            <div id="map"></div>
+        </main>
+    </div>
+
+    <!-- Hospital Details Modal -->
+    <div id="hospital-modal" class="fixed inset-0 modal-backdrop items-center justify-center z-20 hidden">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div class="p-5 border-b bg-gray-50 flex justify-between items-center rounded-t-lg">
+                <h2 id="hospital-name" class="text-2xl font-bold text-yansys-blue">Détails de l'Hôpital</h2>
+                <button id="close-modal-btn" class="text-gray-400 hover:text-red-500 transition-colors">
+                    <i class="fa-solid fa-times fa-2x"></i>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-6">
+                <input type="hidden" id="hospital-id">
+                
+                <!-- Status -->
+                <div>
+                    <label for="hospital-status" class="block text-sm font-medium text-gray-700 mb-2">Statut</label>
+                    <select id="hospital-status" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-yansys-blue focus:ring-yansys-blue">
+                        <option value="none">Non classé</option>
+                        <option value="prospect">Prospect</option>
+                        <option value="client">Client</option>
+                    </select>
+                </div>
+
+                <!-- Products -->
+                <div class="p-4 border rounded-lg">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Produits Associés</h3>
+                    <div id="assigned-products-list" class="space-y-2 mb-4"></div>
+                    <div class="bg-gray-50 p-3 rounded-lg flex items-center space-x-2">
+                        <select id="product-select" class="flex-grow block w-full rounded-md border-gray-300 shadow-sm focus:border-yansys-blue focus:ring-yansys-blue"></select>
+                        <input type="number" id="product-quantity" min="1" value="1" class="w-20 rounded-md border-gray-300 shadow-sm text-center">
+                        <button id="add-product-btn" class="btn btn-green shrink-0"><i class="fa-solid fa-plus mr-2"></i> Ajouter</button>
+                    </div>
+                </div>
+                
+                <!-- Contacts -->
+                 <div class="p-4 border rounded-lg">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Contacts</h3>
+                    <div id="contacts-list" class="space-y-2 mb-4"></div>
+                    <div class="bg-gray-50 p-3 rounded-lg space-y-2">
+                        <div class="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-2">
+                           <input type="text" id="contact-name" placeholder="Nom du contact" class="flex-grow rounded-md border-gray-300 shadow-sm">
+                           <input type="text" id="contact-role" placeholder="Rôle" class="flex-grow rounded-md border-gray-300 shadow-sm">
+                        </div>
+                        <div class="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-2">
+                            <input type="email" id="contact-email" placeholder="Email" class="flex-grow rounded-md border-gray-300 shadow-sm">
+                            <input type="tel" id="contact-phone" placeholder="Téléphone" class="flex-grow rounded-md border-gray-300 shadow-sm">
+                        </div>
+                        <button id="add-contact-btn" class="w-full btn btn-green"><i class="fa-solid fa-user-plus mr-2"></i> Ajouter le Contact</button>
+                    </div>
+                </div>
+
+                <!-- Comments -->
+                <div>
+                    <label for="hospital-comments" class="block text-sm font-medium text-gray-700 mb-2">Commentaires</label>
+                    <textarea id="hospital-comments" rows="4" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-yansys-blue focus:ring-yansys-blue" placeholder="Ajoutez des notes..."></textarea>
+                </div>
+            </div>
+             <div class="p-4 border-t mt-auto bg-gray-50 flex justify-end rounded-b-lg">
+                <button id="save-hospital-btn" class="btn btn-blue">
+                    <i class="fa-solid fa-save mr-2"></i> Sauvegarder les changements
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Product Management Modal -->
+    <div id="product-modal" class="fixed inset-0 modal-backdrop items-center justify-center z-30 hidden">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg">
+            <div class="p-5 border-b bg-gray-50 flex justify-between items-center rounded-t-lg">
+                <h2 class="text-2xl font-bold text-yansys-blue">Bibliothèque de Produits</h2>
+                <button id="close-product-modal-btn" class="text-gray-400 hover:text-red-500 transition-colors">
+                    <i class="fa-solid fa-times fa-2x"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <div class="bg-gray-100 p-3 rounded-lg mb-4">
+                    <label for="new-product-name" class="block text-sm font-medium text-gray-700 mb-1">Ajouter un nouveau produit</label>
+                    <div class="flex items-center space-x-2">
+                        <input type="text" id="new-product-name" placeholder="Nom du produit..." class="flex-grow rounded-md border-gray-300 shadow-sm focus:border-yansys-blue focus:ring-yansys-blue">
+                        <button id="add-new-product-btn" class="btn btn-green"><i class="fa-solid fa-plus"></i> Ajouter</button>
+                    </div>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Produits disponibles</h3>
+                <div id="products-list" class="space-y-2 max-h-64 overflow-y-auto p-2 bg-gray-50 rounded-lg border">
+                    <!-- Master product list -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast-notification" class="fixed top-5 right-5 text-white py-3 px-5 rounded-lg shadow-lg z-50">
+        <p id="toast-message">Action réussie !</p>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="fixed inset-0 modal-backdrop items-center justify-center z-40 hidden">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm">
+            <div class="p-5 text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                    <i class="fa-solid fa-triangle-exclamation text-red-600 fa-xl"></i>
+                </div>
+                <h3 id="confirm-title" class="text-lg mt-4 font-bold text-gray-900">Confirmer la suppression</h3>
+                <p id="confirm-message" class="mt-2 text-sm text-gray-600">Êtes-vous sûr ? Cette action est irréversible.</p>
+            </div>
+            <div class="bg-gray-50 px-4 py-3 sm:px-6 flex flex-row-reverse rounded-b-lg">
+                <button id="confirm-btn" type="button" class="btn btn-red w-full sm:w-auto sm:ml-3">
+                    Supprimer
+                </button>
+                <button id="cancel-btn" type="button" class="btn bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 w-full sm:w-auto mt-2 sm:mt-0">
+                    Annuler
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- DATA STORE (Simulation of a database) ---
+            const LOCAL_STORAGE_KEY = 'yansysCrmData';
+
+            // Initialisez appData avec des données par défaut ou chargées depuis localStorage
+            let appData = {
+                products: [
+                    { id: 1, name: 'Syseo Capture' },
+                    { id: 2, name: 'Syseo Vision' },
+                    { id: 3, name: 'Medwork eCrf' },
+                    { id: 4, name: 'Medwork eTMF' },
+                    { id: 5, name: 'Medwork eStaff' },
+					{ id: 6, name: 'Medwork eExpert' },
+					{ id: 7, name: 'Hurry-Can' },
+					{ id: 8, name: 'Syseo Report' },
+					{ id: 9, name: 'Syseo Dictation' },
+					{ id: 10, name: 'Syseo Reco' },
+					{ id: 11, name: 'Hermès Endo' },
+                ],
+                hospitals: [
+    // FRANCE - Métropole
+    { id: 1, name: "AP-HP, Hôpital de la Pitié Salpêtrière", lat: 48.8396, lng: 2.3615, status: 'client', products: [{id: 1, quantity: 5}, {id: 2, quantity: 20}], contacts: [{name: 'Dr. Alain Dupont', role: 'Chef de service', email: 'alain.dupont@aphp.fr', phone: '0123456789'}], comments: 'Contrat renouvelé en 2023.' },
+    { id: 2, name: "AP‑HP, Assistance Publique – Hôpitaux de Paris", lat: 48.8566, lng: 2.3522, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 3, name: "Hospices Civils de Lyon", lat: 45.7500, lng: 4.8500, status: 'prospect', products: [], contacts: [{name: 'Mme. Claire Dubois', role: 'Directrice des achats', email: 'claire.dubois@chu-lyon.fr', phone: '0612345678'}], comments: 'Négociation en cours pour le logiciel de reco vocale.' },
+    { id: 4, name: "CHU de Toulouse", lat: 43.6047, lng: 1.4442, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 5, name: "CHU de Lille", lat: 50.6292, lng: 3.0573, status: 'client', products: [{id: 3, quantity: 10}], contacts: [{name: 'Sophie Martin', role: 'Acheteuse', email: 'sophie.martin@chru-lille.fr', phone: '0320123456'}], comments: '' },
+    { id: 6, name: "CHU d'Amiens", lat: 49.8941, lng: 2.2958, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 7, name: "CHU d'Angers", lat: 47.4784, lng: -0.5632, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 8, name: "CHU de Besançon", lat: 47.2378, lng: 6.0241, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 9, name: "CHU de Bordeaux", lat: 44.8378, lng: -0.5792, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 10, name: "CHU de Brest", lat: 48.3904, lng: -4.4861, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 11, name: "CHU de Caen", lat: 49.1829, lng: -0.3707, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 12, name: "CHU de Clermont-Ferrand", lat: 45.7772, lng: 3.0870, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 13, name: "CHU de Dijon", lat: 47.3160, lng: 5.0415, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 14, name: "CHU de Grenoble", lat: 45.1995, lng: 5.7456, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 15, name: "CHU de Montpellier", lat: 43.6108, lng: 3.8767, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 16, name: "CHU de Nantes", lat: 47.2184, lng: -1.5536, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 17, name: "CHU de Nice", lat: 43.7102, lng: 7.2620, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 18, name: "CHU de Nîmes", lat: 43.8367, lng: 4.3601, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 19, name: "CHU d'Orléans", lat: 47.9025, lng: 1.9090, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 20, name: "CHU de Poitiers", lat: 46.5802, lng: 0.3404, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 21, name: "CHU de Reims", lat: 49.2583, lng: 4.0317, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 22, name: "CHU de Rennes", lat: 48.1173, lng: -1.6778, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 23, name: "CHU de Rouen", lat: 49.4432, lng: 1.0993, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 24, name: "CHU de Saint‑Étienne", lat: 45.4780, lng: 4.3890, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 25, name: "CHU de Strasbourg", lat: 48.5734, lng: 7.7521, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 26, name: "CHU de Tours", lat: 47.3941, lng: 0.6848, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 27, name: "AP‑HM, Hôpitaux de Marseille (ex. Hôpital Nord)", lat: 43.3786, lng: 5.3633, status: 'none', products: [], contacts: [], comments: '' },
+
+    // FRANCE - Départements et Régions d'Outre-Mer (DOM-TOM)
+    { id: 28, name: "CHU de Martinique", lat: 14.6163, lng: -61.0744, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 29, name: "CHU de La Réunion", lat: -20.8823, lng: 55.4504, status: 'prospect', products: [], contacts: [], comments: '' },
+    { id: 30, name: "Centre Hospitalier de Saint-Pierre (La Réunion)", lat: -21.3419, lng: 55.4780, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 31, name: "Centre Hospitalier de Cayenne (Guyane)", lat: 4.9224, lng: -52.3135, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 32, name: "Centre Hospitalier de Basse-Terre (Guadeloupe)", lat: 16.0147, lng: -61.7063, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 33, name: "Centre Hospitalier de Saint-Martin", lat: 18.0731, lng: -63.0841, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 34, name: "Centre Hospitalier de Mayotte", lat: -12.7827, lng: 45.2276, status: 'none', products: [], contacts: [], comments: '' },
+
+    // CANADA - Québec
+    { id: 35, name: "Centre hospitalier de l'Université de Montréal (CHUM)", lat: 45.5135, lng: -73.5595, status: 'prospect', products: [], contacts: [], comments: 'Premier contact établi.' },
+    { id: 36, name: "Hôpital Maisonneuve-Rosemont", lat: 45.5770, lng: -73.5536, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 37, name: "Hôpital du Sacré-Cœur de Montréal", lat: 45.5438, lng: -73.6794, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 38, name: "Centre hospitalier universitaire de Sherbrooke (CHUS)", lat: 45.4004, lng: -71.8824, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 39, name: "CHU de Québec – Université Laval", lat: 46.8139, lng: -71.2082, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 40, name: "Centre hospitalier régional de Lanaudière", lat: 46.0434, lng: -73.4362, status: 'none', products: [], contacts: [], comments: '' },
+
+    // CANADA - Autres provinces
+    { id: 41, name: "Hôpital général de Vancouver", lat: 49.2612, lng: -123.1234, status: 'none', products: [], contacts: [], comments: '' },
+    { id: 42, name: "The Hospital for Sick Children (SickKids)", lat: 43.6577, lng: -79.3874, status: 'client', products: [{id: 1, quantity: 2}, {id: 4, quantity: 1}], contacts: [], comments: 'Client historique au Canada.' }
+]
+            };
+
+            // Fonction pour charger les données depuis localStorage
+            function loadData() {
+                const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (storedData) {
+                    try {
+                        const parsedData = JSON.parse(storedData);
+                        // Assurez-vous que les données par défaut sont fusionnées si de nouveaux champs sont ajoutés
+                        appData = {
+                            products: parsedData.products || [],
+                            hospitals: parsedData.hospitals || []
+                        };
+                        // Assurez-vous que les contacts ont email et phone, sinon initialisez-les
+                        appData.hospitals.forEach(hospital => {
+                            hospital.contacts.forEach(contact => {
+                                contact.email = contact.email || '';
+                                contact.phone = contact.phone || '';
+                            });
+                        });
+                        showToast('Données chargées depuis le stockage local.', 'success');
+                    } catch (e) {
+                        console.error("Erreur lors du chargement des données depuis localStorage:", e);
+                        showToast('Erreur lors du chargement des données.', 'error');
+                    }
+                }
+            }
+
+            // Fonction pour sauvegarder les données dans localStorage
+            function saveData() {
+                try {
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(appData));
+                } catch (e) {
+                    console.error("Erreur lors de la sauvegarde des données dans localStorage:", e);
+                    showToast('Erreur lors de la sauvegarde des données.', 'error');
+                }
+            }
+
+            // --- MAP INITIALIZATION ---
+            const map = L.map('map').setView([47.0, 2.0], 5);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(map);
+
+            let hospitalMarkers = L.layerGroup().addTo(map);
+
+            const statusColors = {
+                client: '#92c83e', // yansys-green
+                prospect: '#1a3a6b', // yansys-blue
+                none: '#6b7280' // gray-500
+            };
+            
+            const createCustomIcon = (status) => {
+                return L.divIcon({
+                    html: `<i class="fa-solid fa-hospital fa-2x" style="color: ${statusColors[status]}; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.4));"></i>`,
+                    className: 'bg-transparent border-0',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 30]
+                });
+            };
+
+            // --- UI ELEMENT REFERENCES ---
+            const hospitalModal = document.getElementById('hospital-modal');
+            const productModal = document.getElementById('product-modal');
+            const confirmModal = document.getElementById('confirm-modal');
+            const toast = document.getElementById('toast-notification');
+
+            const closeModalBtn = document.getElementById('close-modal-btn');
+            const closeProductModalBtn = document.getElementById('close-product-modal-btn');
+            const manageProductsBtn = document.getElementById('manage-products-btn');
+            const exportDataBtn = document.getElementById('export-data-btn');
+            const importFileInput = document.getElementById('import-file-input');
+
+            // --- UTILITY FUNCTIONS ---
+            
+            let toastTimeout;
+            function showToast(message, type = 'success') {
+                const toastMessage = document.getElementById('toast-message');
+                toastMessage.textContent = message;
+                
+                toast.className = 'fixed top-5 right-5 text-white py-3 px-5 rounded-lg shadow-lg z-50'; // Reset classes
+                if (type === 'success') {
+                    toast.classList.add('bg-green-500');
+                } else {
+                    toast.classList.add('bg-red-500');
+                }
+                
+                toast.classList.add('show');
+
+                clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 3000);
+            }
+
+            let confirmCallback = null;
+            function showConfirmModal(title, message, onConfirm) {
+                document.getElementById('confirm-title').textContent = title;
+                document.getElementById('confirm-message').textContent = message;
+                confirmCallback = onConfirm;
+                confirmModal.style.display = 'flex';
+            }
+
+            function closeConfirmModal() {
+                confirmModal.style.display = 'none';
+                confirmCallback = null;
+            }
+            
+            // --- MAIN FUNCTIONS (render, open, close, etc.) ---
+
+            function renderAllMarkers() {
+                hospitalMarkers.clearLayers();
+                const filters = getActiveFilters();
+                const productFilter = document.getElementById('product-filter').value;
+                
+                appData.hospitals
+                    .filter(h => filters.includes(h.status))
+                    .filter(h => {
+                        if (productFilter === 'all') return true;
+                        return h.products.some(p => p.id == productFilter);
+                    })
+                    .forEach(hospital => {
+                        const marker = L.marker([hospital.lat, hospital.lng], { icon: createCustomIcon(hospital.status) })
+                            .addTo(hospitalMarkers)
+                            .on('click', () => openHospitalModal(hospital.id));
+                    });
+            }
+
+            function openHospitalModal(hospitalId) {
+                const hospital = appData.hospitals.find(h => h.id === hospitalId);
+                if (!hospital) return;
+
+                document.getElementById('hospital-id').value = hospitalId;
+                document.getElementById('hospital-name').textContent = hospital.name;
+                document.getElementById('hospital-status').value = hospital.status;
+                document.getElementById('hospital-comments').value = hospital.comments;
+
+                renderAssignedProducts(hospitalId);
+                renderContacts(hospitalId);
+                populateProductSelect();
+
+                hospitalModal.style.display = 'flex';
+            }
+
+            function closeHospitalModal() {
+                hospitalModal.style.display = 'none';
+            }
+
+            function populateProductSelect() {
+                const select = document.getElementById('product-select');
+                select.innerHTML = '';
+                if(appData.products.length === 0){
+                    select.innerHTML = '<option disabled>Aucun produit disponible</option>';
+                    return;
+                }
+                appData.products.forEach(p => {
+                    const option = document.createElement('option');
+                    option.value = p.id;
+                    option.textContent = p.name;
+                    select.appendChild(option);
+                });
+            }
+
+            function renderAssignedProducts(hospitalId) {
+                const hospital = appData.hospitals.find(h => h.id === hospitalId);
+                const list = document.getElementById('assigned-products-list');
+                list.innerHTML = '';
+                if (hospital.products.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500 text-center italic">Aucun produit assigné.</p>';
+                } else {
+                    hospital.products.forEach(assignedProduct => {
+                        const productInfo = appData.products.find(p => p.id === assignedProduct.id);
+                        if (!productInfo) return;
+                        const item = document.createElement('div');
+                        item.className = 'flex justify-between items-center bg-gray-100 p-2 rounded-lg';
+                        item.innerHTML = `
+                            <span>${productInfo.name} <span class="text-gray-500">(x${assignedProduct.quantity})</span></span>
+                            <button class="remove-product-btn text-red-500 hover:text-red-700" data-product-id="${productInfo.id}"><i class="fa-solid fa-trash"></i></button>
+                        `;
+                        list.appendChild(item);
+                    });
+                }
+            }
+            
+            function renderContacts(hospitalId) {
+                const hospital = appData.hospitals.find(h => h.id === hospitalId);
+                const list = document.getElementById('contacts-list');
+                list.innerHTML = '';
+                if(hospital.contacts.length === 0) {
+                     list.innerHTML = '<p class="text-gray-500 text-center italic">Aucun contact ajouté.</p>';
+                } else {
+                    hospital.contacts.forEach((contact, index) => {
+                       const item = document.createElement('div');
+                       item.className = 'flex justify-between items-center bg-gray-100 p-2 rounded-lg';
+                       item.innerHTML = `
+                           <div>
+                                <p class="font-semibold">${contact.name}</p>
+                                <p class="text-sm text-gray-600">${contact.role}</p>
+                                <p class="text-sm text-gray-600">${contact.email ? `<i class="fa-solid fa-envelope mr-1"></i> ${contact.email}` : ''}</p>
+                                <p class="text-sm text-gray-600">${contact.phone ? `<i class="fa-solid fa-phone mr-1"></i> ${contact.phone}` : ''}</p>
+                           </div>
+                           <button class="remove-contact-btn text-red-500 hover:text-red-700" data-contact-index="${index}"><i class="fa-solid fa-trash"></i></button>
+                       `;
+                       list.appendChild(item);
+                    });
+                }
+            }
+
+            function saveHospitalDetails() {
+                const hospitalId = parseInt(document.getElementById('hospital-id').value);
+                const hospital = appData.hospitals.find(h => h.id === hospitalId);
+                if (!hospital) return;
+
+                hospital.status = document.getElementById('hospital-status').value;
+                hospital.comments = document.getElementById('hospital-comments').value.trim();
+                
+                saveData(); // Sauvegarder les données après modification
+                showToast('Hôpital sauvegardé !');
+                closeHospitalModal();
+                renderAllMarkers(); 
+            }
+            
+            function openProductModal() {
+                renderMasterProductList();
+                productModal.style.display = 'flex';
+            }
+
+            function closeProductModal() {
+                productModal.style.display = 'none';
+            }
+
+            function renderMasterProductList() {
+                const list = document.getElementById('products-list');
+                list.innerHTML = '';
+                 if(appData.products.length === 0){
+                    list.innerHTML = '<p class="text-gray-500 text-center italic">Aucun produit dans la bibliothèque.</p>';
+                    return;
+                }
+                appData.products.forEach(p => {
+                    const item = document.createElement('div');
+                    item.className = 'flex justify-between items-center bg-white p-2 rounded-lg shadow-sm';
+                    item.innerHTML = `
+                        <span class="product-name">${p.name}</span>
+                        <button class="delete-master-product-btn text-red-500 hover:text-red-700" data-product-id="${p.id}"><i class="fa-solid fa-trash"></i></button>
+                    `;
+                    list.appendChild(item);
+                });
+                populateProductFilter();
+            }
+            
+            function populateProductFilter() {
+                const select = document.getElementById('product-filter');
+                const currentVal = select.value;
+                select.innerHTML = '<option value="all">Tous les produits</option>';
+                 appData.products.forEach(p => {
+                    const option = document.createElement('option');
+                    option.value = p.id;
+                    option.textContent = p.name;
+                    select.appendChild(option);
+                });
+                select.value = currentVal;
+            }
+
+            function getActiveFilters() {
+                const filters = [];
+                if (document.getElementById('filter-client').checked) filters.push('client');
+                if (document.getElementById('filter-prospect').checked) filters.push('prospect');
+                if (document.getElementById('filter-none').checked) filters.push('none');
+                return filters;
+            }
+
+            // --- EVENT LISTENERS ---
+            
+            closeModalBtn.addEventListener('click', closeHospitalModal);
+            document.getElementById('save-hospital-btn').addEventListener('click', saveHospitalDetails);
+            manageProductsBtn.addEventListener('click', openProductModal);
+            closeProductModalBtn.addEventListener('click', closeProductModal);
+
+            // Export Data Listener
+            exportDataBtn.addEventListener('click', () => {
+                const dataStr = JSON.stringify(appData, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'yansys_data.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('Données exportées avec succès !');
+            });
+
+            // Import Data Listener
+            importFileInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const importedData = JSON.parse(e.target.result);
+                            // Simple validation for imported data structure
+                            if (importedData.products && Array.isArray(importedData.products) &&
+                                importedData.hospitals && Array.isArray(importedData.hospitals)) {
+                                appData = importedData;
+                                // Assurez-vous que les contacts ont email et phone après l'importation
+                                appData.hospitals.forEach(hospital => {
+                                    hospital.contacts.forEach(contact => {
+                                        contact.email = contact.email || '';
+                                        contact.phone = contact.phone || '';
+                                    });
+                                });
+                                saveData(); // Sauvegardez les données importées
+                                renderAllMarkers();
+                                populateProductFilter();
+                                showToast('Données importées avec succès !', 'success');
+                            } else {
+                                showToast('Fichier JSON non valide ou structure incorrecte.', 'error');
+                            }
+                        } catch (error) {
+                            console.error("Erreur lors de l'importation du fichier:", error);
+                            showToast('Erreur lors du traitement du fichier JSON.', 'error');
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            });
+            
+            // Confirmation Modal Listeners
+            document.getElementById('cancel-btn').addEventListener('click', closeConfirmModal);
+            document.getElementById('confirm-btn').addEventListener('click', () => {
+                if(typeof confirmCallback === 'function') {
+                    confirmCallback();
+                    saveData(); // Sauvegarder après confirmation
+                }
+                closeConfirmModal();
+            });
+
+            // Hospital Modal Listeners
+            document.getElementById('add-product-btn').addEventListener('click', () => {
+                const hospitalId = parseInt(document.getElementById('hospital-id').value);
+                const hospital = appData.hospitals.find(h => h.id === hospitalId);
+                const productId = parseInt(document.getElementById('product-select').value);
+                const quantity = parseInt(document.getElementById('product-quantity').value);
+
+                if (hospital && productId && quantity > 0) {
+                    const existingProduct = hospital.products.find(p => p.id === productId);
+                    if (existingProduct) {
+                        existingProduct.quantity += quantity;
+                    } else {
+                        hospital.products.push({ id: productId, quantity: quantity });
+                    }
+                    renderAssignedProducts(hospitalId);
+                    saveData(); // Sauvegarder les données
+                }
+            });
+            
+            document.getElementById('assigned-products-list').addEventListener('click', (e) => {
+                if (e.target.closest('.remove-product-btn')) {
+                    const button = e.target.closest('.remove-product-btn');
+                    const productId = parseInt(button.dataset.productId);
+                    const hospitalId = parseInt(document.getElementById('hospital-id').value);
+                    const hospital = appData.hospitals.find(h => h.id === hospitalId);
+                    
+                    hospital.products = hospital.products.filter(p => p.id !== productId);
+                    renderAssignedProducts(hospitalId);
+                    saveData(); // Sauvegarder les données
+                }
+            });
+
+            document.getElementById('add-contact-btn').addEventListener('click', () => {
+                const hospitalId = parseInt(document.getElementById('hospital-id').value);
+                const hospital = appData.hospitals.find(h => h.id === hospitalId);
+                const contactNameInput = document.getElementById('contact-name');
+                const contactRoleInput = document.getElementById('contact-role');
+                const contactEmailInput = document.getElementById('contact-email');
+                const contactPhoneInput = document.getElementById('contact-phone');
+
+                const name = contactNameInput.value.trim();
+                const role = contactRoleInput.value.trim();
+                const email = contactEmailInput.value.trim();
+                const phone = contactPhoneInput.value.trim();
+
+                if (hospital && name && role) { // Name and role are mandatory
+                    hospital.contacts.push({ name, role, email, phone });
+                    renderContacts(hospitalId);
+                    contactNameInput.value = '';
+                    contactRoleInput.value = '';
+                    contactEmailInput.value = '';
+                    contactPhoneInput.value = '';
+                    saveData(); // Sauvegarder les données
+                } else {
+                    showToast('Le nom et le rôle du contact sont requis.', 'error');
+                }
+            });
+
+            document.getElementById('contacts-list').addEventListener('click', (e) => {
+                 if (e.target.closest('.remove-contact-btn')) {
+                    const button = e.target.closest('.remove-contact-btn');
+                    const contactIndex = parseInt(button.dataset.contactIndex);
+                    const hospitalId = parseInt(document.getElementById('hospital-id').value);
+                    const hospital = appData.hospitals.find(h => h.id === hospitalId);
+                    
+                    hospital.contacts.splice(contactIndex, 1);
+                    renderContacts(hospitalId);
+                    saveData(); // Sauvegarder les données
+                }
+            });
+
+            // Product Library Modal Listeners
+            document.getElementById('add-new-product-btn').addEventListener('click', () => {
+                const input = document.getElementById('new-product-name');
+                const name = input.value.trim();
+                if (name) {
+                    const isDuplicate = appData.products.some(p => p.name.toLowerCase() === name.toLowerCase());
+                    if (isDuplicate) {
+                        showToast('Ce produit existe déjà.', 'error');
+                        return;
+                    }
+                    const newId = appData.products.length > 0 ? Math.max(...appData.products.map(p => p.id)) + 1 : 1;
+                    appData.products.push({ id: newId, name: name });
+                    input.value = '';
+                    renderMasterProductList();
+                    saveData(); // Sauvegarder les données
+                    showToast('Produit ajouté avec succès.');
+                }
+            });
+            
+            document.getElementById('products-list').addEventListener('click', (e) => {
+                const deleteButton = e.target.closest('.delete-master-product-btn');
+                if (deleteButton) {
+                    const productId = parseInt(deleteButton.dataset.productId);
+                    const productName = deleteButton.parentElement.querySelector('.product-name').textContent;
+                    
+                    showConfirmModal(
+                        `Supprimer "${productName}" ?`, 
+                        'La suppression de ce produit le retirera également de tous les hôpitaux associés. Cette action est définitive.',
+                        () => {
+                            // Delete from master list
+                            appData.products = appData.products.filter(p => p.id !== productId);
+                            
+                            // Delete from all hospitals
+                            appData.hospitals.forEach(h => {
+                                h.products = h.products.filter(p => p.id !== productId);
+                            });
+                            
+                            renderMasterProductList();
+                            saveData(); // Sauvegarder les données
+                            showToast(`"${productName}" a été supprimé.`, 'success');
+                        }
+                    );
+                }
+            });
+            
+            // Filter Listeners
+            document.querySelectorAll('#filter-client, #filter-prospect, #filter-none').forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                     const allChecked = document.getElementById('filter-client').checked && document.getElementById('filter-prospect').checked && document.getElementById('filter-none').checked;
+                     const noneChecked = !document.getElementById('filter-client').checked && !document.getElementById('filter-prospect').checked && !document.getElementById('filter-none').checked
+                     document.getElementById('filter-all').checked = allChecked || !noneChecked;
+                     document.getElementById('filter-all').indeterminate = !allChecked && !noneChecked;
+                    renderAllMarkers();
+                });
+            });
+
+            document.getElementById('filter-all').addEventListener('change', (e) => {
+                const isChecked = e.target.checked;
+                document.getElementById('filter-client').checked = isChecked;
+                document.getElementById('filter-prospect').checked = isChecked;
+                document.getElementById('filter-none').checked = isChecked;
+                document.getElementById('filter-all').indeterminate = false;
+                renderAllMarkers();
+            });
+            
+            document.getElementById('product-filter').addEventListener('change', renderAllMarkers);
+
+            // --- INITIAL LOAD AND RENDER ---
+            loadData(); // Charge les données au démarrage
+            renderAllMarkers();
+            populateProductFilter();
+        });
+    </script>
+
+</body>
+</html>
