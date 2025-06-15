@@ -92,6 +92,11 @@
              transform: translateX(100%);
              transition: all 0.5s ease-in-out;
         }
+
+        /* Adding Hospital Style */
+        .crosshair-cursor {
+            cursor: crosshair !important;
+        }
     </style>
 </head>
 <body class="overflow-hidden">
@@ -161,6 +166,9 @@
 
             <!-- Import/Export & Product Management Buttons -->
             <div class="p-4 border-t border-gray-200 space-y-3">
+                <button id="add-hospital-btn" class="w-full btn btn-green flex items-center justify-center">
+                    <i class="fa-solid fa-plus mr-2"></i> Ajouter un hôpital
+                </button>
                 <button id="export-data-btn" class="w-full btn btn-blue flex items-center justify-center">
                     <i class="fa-solid fa-download mr-2"></i> Exporter les données
                 </button>
@@ -184,8 +192,8 @@
     <div id="hospital-modal" class="fixed inset-0 modal-backdrop items-center justify-center z-20 hidden">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <div class="p-5 border-b bg-gray-50 flex justify-between items-center rounded-t-lg">
-                <h2 id="hospital-name" class="text-2xl font-bold text-yansys-blue">Détails de l'Hôpital</h2>
-                <button id="close-modal-btn" class="text-gray-400 hover:text-red-500 transition-colors">
+                    <input type="text" id="hospital-name" class="text-2xl font-bold text-yansys-blue bg-transparent w-full border-0 p-0 focus:ring-2 focus:ring-yansys-blue rounded-md">                
+                    <button id="close-modal-btn" class="text-gray-400 hover:text-red-500 transition-colors">
                     <i class="fa-solid fa-times fa-2x"></i>
                 </button>
             </div>
@@ -236,7 +244,10 @@
                     <textarea id="hospital-comments" rows="4" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-yansys-blue focus:ring-yansys-blue" placeholder="Ajoutez des notes..."></textarea>
                 </div>
             </div>
-             <div class="p-4 border-t mt-auto bg-gray-50 flex justify-end rounded-b-lg">
+            <div class="p-4 border-t mt-auto bg-gray-50 flex justify-between items-center rounded-b-lg">
+                <button id="delete-hospital-btn" class="btn btn-red">
+                    <i class="fa-solid fa-trash-alt mr-2"></i> Supprimer l'hôpital
+                </button>
                 <button id="save-hospital-btn" class="btn btn-blue">
                     <i class="fa-solid fa-save mr-2"></i> Sauvegarder les changements
                 </button>
@@ -294,6 +305,41 @@
             </div>
         </div>
     </div>
+
+    <!-- Add hospital Modal -->
+    <div id="add-hospital-modal" class="fixed inset-0 modal-backdrop items-center justify-center z-20 hidden">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg">
+            <div class="p-5 border-b bg-gray-50 flex justify-between items-center rounded-t-lg">
+                <h2 class="text-2xl font-bold text-yansys-blue">Ajouter un nouvel hôpital</h2>
+                <button id="close-add-modal-btn" class="text-gray-400 hover:text-red-500 transition-colors">
+                    <i class="fa-solid fa-times fa-2x"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <p class="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg"><i class="fa-solid fa-info-circle mr-2"></i>Les coordonnées ont été définies par votre clic sur la carte.</p>
+                <div>
+                    <label for="new-hospital-name" class="block text-sm font-medium text-gray-700">Nom de l'hôpital</label>
+                    <input type="text" id="new-hospital-name" placeholder="Entrez le nom ici..." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-yansys-blue focus:ring-yansys-blue">
+                </div>
+                <div class="flex space-x-4">
+                    <div class="flex-1">
+                        <label for="new-hospital-lat" class="block text-sm font-medium text-gray-700">Latitude</label>
+                        <input type="text" id="new-hospital-lat" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm bg-gray-100" readonly>
+                    </div>
+                    <div class="flex-1">
+                        <label for="new-hospital-lng" class="block text-sm font-medium text-gray-700">Longitude</label>
+                        <input type="text" id="new-hospital-lng" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm bg-gray-100" readonly>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 border-t bg-gray-50 flex justify-end rounded-b-lg">
+                <button id="save-new-hospital-btn" class="btn btn-blue">
+                    <i class="fa-solid fa-save mr-2"></i> Sauvegarder l'hôpital
+                </button>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -439,6 +485,8 @@
             const closeModalBtn = document.getElementById('close-modal-btn');
             const closeProductModalBtn = document.getElementById('close-product-modal-btn');
             const manageProductsBtn = document.getElementById('manage-products-btn');
+            const addHospitalModal = document.getElementById('add-hospital-modal');
+            const addHospitalBtn = document.getElementById('add-hospital-btn');
             const exportDataBtn = document.getElementById('export-data-btn');
             const importFileInput = document.getElementById('import-file-input');
 
@@ -502,7 +550,7 @@
                 if (!hospital) return;
 
                 document.getElementById('hospital-id').value = hospitalId;
-                document.getElementById('hospital-name').textContent = hospital.name;
+                document.getElementById('hospital-name').value = hospital.name;
                 document.getElementById('hospital-status').value = hospital.status;
                 document.getElementById('hospital-comments').value = hospital.comments;
 
@@ -581,7 +629,15 @@
                 const hospitalId = parseInt(document.getElementById('hospital-id').value);
                 const hospital = appData.hospitals.find(h => h.id === hospitalId);
                 if (!hospital) return;
+                
+                const newName = document.getElementById('hospital-name').value.trim();
 
+                if (!newName) {
+                    showToast("Le nom de l'hôpital ne peut pas être vide.", 'error');
+                    return;
+                }
+
+                hospital.name = newName;
                 hospital.status = document.getElementById('hospital-status').value;
                 hospital.comments = document.getElementById('hospital-comments').value.trim();
                 
@@ -589,6 +645,33 @@
                 showToast('Hôpital sauvegardé !');
                 closeHospitalModal();
                 renderAllMarkers(); 
+            }
+
+            function handleDeleteHospital() {
+                const hospitalId = parseInt(document.getElementById('hospital-id').value);
+                const hospital = appData.hospitals.find(h => h.id === hospitalId);
+                if (!hospital) return;
+
+                showConfirmModal(
+                    `Supprimer "${hospital.name}" ?`,
+                    'Cette action est définitive et ne peut pas être annulée. Toutes les données associées (produits, contacts) seront perdues.',
+                    () => {
+                        // Find the index of the hospital to delete
+                        const hospitalIndex = appData.hospitals.findIndex(h => h.id === hospitalId);
+                        if (hospitalIndex > -1) {
+                            // Remove the hospital from the array
+                            appData.hospitals.splice(hospitalIndex, 1);
+
+                            // Persist the changes
+                            saveData();
+
+                            // Update the UI
+                            closeHospitalModal();
+                            renderAllMarkers();
+                            showToast(`L'hôpital "${hospital.name}" a été supprimé.`, 'success');
+                        }
+                    }
+                );
             }
             
             function openProductModal() {
@@ -640,12 +723,104 @@
                 return filters;
             }
 
+            // --- State variable for placement mode ---
+            let isPlacingHospital = false;
+
+            // --- functions for hospital placement ---
+            
+            function enterPlacementMode() {
+                isPlacingHospital = true;
+                const button = document.getElementById('add-hospital-btn');
+                button.innerHTML = '<i class="fa-solid fa-times mr-2"></i> Annuler le placement';
+                button.classList.remove('btn-green');
+                button.classList.add('btn-red');
+                
+                L.DomUtil.addClass(map.getContainer(), 'crosshair-cursor');
+                showToast('Cliquez sur la carte pour placer le nouvel hôpital.', 'success');
+                
+                map.once('click', onMapClickForPlacement);
+                document.addEventListener('keydown', handleEscapeKey);
+            }
+
+            function exitPlacementMode() {
+                isPlacingHospital = false;
+                const button = document.getElementById('add-hospital-btn');
+                button.innerHTML = '<i class="fa-solid fa-plus mr-2"></i> Ajouter un hôpital';
+                button.classList.remove('btn-red');
+                button.classList.add('btn-green');
+                
+                L.DomUtil.removeClass(map.getContainer(), 'crosshair-cursor');
+                map.off('click', onMapClickForPlacement); // Ensure listener is removed
+                document.removeEventListener('keydown', handleEscapeKey);
+            }
+
+            function handleEscapeKey(e) {
+                if (e.key === 'Escape') {
+                    exitPlacementMode();
+                    showToast('Placement annulé.', 'error');
+                }
+            }
+
+            function onMapClickForPlacement(e) {
+                const { lat, lng } = e.latlng;
+                
+                // Populate modal fields
+                document.getElementById('new-hospital-name').value = '';
+                document.getElementById('new-hospital-lat').value = lat.toFixed(6); // Format for display
+                document.getElementById('new-hospital-lng').value = lng.toFixed(6);
+                
+                exitPlacementMode(); // Reset UI state (button, cursor)
+                
+                // Now, open the modal
+                addHospitalModal.style.display = 'flex';
+                document.getElementById('new-hospital-name').focus();
+            }
+
+            function closeAddHospitalModal() {
+                addHospitalModal.style.display = 'none';
+            }
+
+            function saveNewHospital() {
+                const name = document.getElementById('new-hospital-name').value.trim();
+                // Coordinates are now read from the readonly fields
+                const lat = parseFloat(document.getElementById('new-hospital-lat').value);
+                const lng = parseFloat(document.getElementById('new-hospital-lng').value);
+
+                if (!name || isNaN(lat) || isNaN(lng)) {
+                    showToast('Le nom de l\'hôpital est requis.', 'error');
+                    return;
+                }
+                
+                const newId = appData.hospitals.length > 0 ? Math.max(...appData.hospitals.map(h => h.id)) + 1 : 1;
+                
+                const newHospital = {
+                    id: newId,
+                    name: name,
+                    lat: lat,
+                    lng: lng,
+                    status: 'none',
+                    products: [],
+                    contacts: [],
+                    comments: ''
+                };
+                
+                appData.hospitals.push(newHospital);
+                saveData();
+                renderAllMarkers();
+                closeAddHospitalModal();
+                showToast('Hôpital ajouté avec succès !', 'success');
+            }
+
+            
+
             // --- EVENT LISTENERS ---
             
             closeModalBtn.addEventListener('click', closeHospitalModal);
             document.getElementById('save-hospital-btn').addEventListener('click', saveHospitalDetails);
             manageProductsBtn.addEventListener('click', openProductModal);
             closeProductModalBtn.addEventListener('click', closeProductModal);
+
+           
 
             // Export Data Listener
             exportDataBtn.addEventListener('click', () => {
@@ -707,7 +882,20 @@
                 closeConfirmModal();
             });
 
-            // Hospital Modal Listeners
+            //  Hospital Modal Listeners
+            addHospitalBtn.addEventListener('click', () => {
+                if (isPlacingHospital) {
+                    exitPlacementMode();
+                    showToast('Placement annulé.', 'error');
+                } else {
+                    enterPlacementMode();
+                }
+            });
+
+            document.getElementById('close-add-modal-btn').addEventListener('click', closeAddHospitalModal);
+            document.getElementById('save-new-hospital-btn').addEventListener('click', saveNewHospital);
+            document.getElementById('delete-hospital-btn').addEventListener('click', handleDeleteHospital);
+
             document.getElementById('add-product-btn').addEventListener('click', () => {
                 const hospitalId = parseInt(document.getElementById('hospital-id').value);
                 const hospital = appData.hospitals.find(h => h.id === hospitalId);
